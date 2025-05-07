@@ -3385,17 +3385,12 @@ int reactor::do_run() {
             if (go_to_sleep) {
                 internal::cpu_relax();
                 if (idle_end - idle_start > _cfg.max_poll_time) {
-                    // Turn off the task quota timer to avoid spurious wakeups
-                    struct itimerspec zero_itimerspec = {};
-                    _task_quota_timer.timerfd_settime(0, zero_itimerspec);
-                    _cpu_stall_detector->start_sleep();
-                    _cpu_profiler->stop();
-                    try_sleep();
-                    _cpu_profiler->start();
-                    _cpu_stall_detector->end_sleep();
-                    // We may have slept for a while, so freshen idle_end
-                    idle_end = now();
-                    _task_quota_timer.timerfd_settime(0, task_quote_itimerspec);
+                    bool succ = try_sleep();
+                    if (succ) {
+                        // We may have slept for a while, so freshen idle_end
+                        idle_end = now();
+                        _task_quota_timer.timerfd_settime(0, task_quote_itimerspec);
+                    }
                 }
             } else {
                 // We previously ran pure_check_for_work(), might not actually have performed
@@ -3414,7 +3409,7 @@ int reactor::do_run() {
 }
 
 
-void
+bool
 reactor::try_sleep() {
     for (auto i = _pollers.begin(); i != _pollers.end(); ++i) {
         auto ok = (*i)->try_enter_interrupt_mode();
@@ -3422,15 +3417,26 @@ reactor::try_sleep() {
             while (i != _pollers.begin()) {
                 (*--i)->exit_interrupt_mode();
             }
-            return;
+            return false;
         }
     }
+
+    // Turn off the task quota timer to avoid spurious wakeups
+    struct itimerspec zero_itimerspec = {};
+    _task_quota_timer.timerfd_settime(0, zero_itimerspec);
+    _cpu_stall_detector->start_sleep();
+    _cpu_profiler->stop();
 
     _backend->wait_and_process_events(&_active_sigmask);
 
     for (auto i = _pollers.rbegin(); i != _pollers.rend(); ++i) {
         (*i)->exit_interrupt_mode();
     }
+
+    _cpu_profiler->start();
+    _cpu_stall_detector->end_sleep();
+    
+    return true;
 }
 
 bool
