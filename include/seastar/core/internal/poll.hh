@@ -39,6 +39,7 @@ struct pollfn {
     // If it returns false, the sleeping idle loop may not be entered.
     virtual bool try_enter_interrupt_mode() = 0;
     virtual void exit_interrupt_mode() = 0;
+    virtual int get_id() = 0;
 };
 
 // The common case for poller -- do not make any difference between
@@ -68,6 +69,7 @@ std::unique_ptr<seastar::pollfn> make_pollfn(Func&& func) {
         virtual bool poll() override final {
             return func();
         }
+        virtual int get_id() override { return 11; }
     };
     return std::make_unique<the_pollfn>(std::forward<Func>(func));
 }

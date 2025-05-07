@@ -2786,6 +2786,7 @@ public:
     virtual bool poll() override final {
         return _r._backend->kernel_submit_work();
     }
+    virtual int get_id() override { return 8; }
 };
 
 class reactor::signal_pollfn final : public reactor::pollfn {
@@ -2815,6 +2816,8 @@ public:
     virtual void exit_interrupt_mode() override final {
         ::pthread_sigmask(SIG_SETMASK, &_r._active_sigmask, nullptr);
     }
+
+    virtual int get_id() override { return 1; }
 };
 
 class reactor::batch_flush_pollfn final : public simple_pollfn<true> {
@@ -2824,6 +2827,7 @@ public:
     virtual bool poll() final override {
         return _r.flush_tcp_batches();
     }
+    virtual int get_id() override { return 9; }
 };
 
 class reactor::reap_kernel_completions_pollfn final : public reactor::pollfn {
@@ -2841,6 +2845,7 @@ public:
     }
     virtual void exit_interrupt_mode() override final {
     }
+    virtual int get_id() override { return 2; }
 };
 
 class reactor::io_queue_submission_pollfn final : public reactor::pollfn {
@@ -2874,6 +2879,7 @@ public:
             _armed = false;
         }
     }
+    virtual int get_id() override { return 3; }
 };
 
 // Other cpus can queue items for us to free; and they won't notify
@@ -2886,6 +2892,7 @@ public:
     virtual bool poll() final override {
         return memory::drain_cross_cpu_freelist();
     }
+    virtual int get_id() override { return 10; }
 };
 
 class reactor::lowres_timer_pollfn final : public reactor::pollfn {
@@ -2925,6 +2932,7 @@ public:
             _armed = false;
         }
     }
+    virtual int get_id() override { return 4; }
 };
 
 class reactor::smp_pollfn final : public reactor::pollfn {
@@ -2961,6 +2969,7 @@ public:
     virtual void exit_interrupt_mode() override final {
         _r._sleeping.store(false, std::memory_order_relaxed);
     }
+    virtual int get_id() override { return 5; }
 };
 
 class reactor::execution_stage_pollfn final : public reactor::pollfn {
@@ -2980,6 +2989,7 @@ public:
         return true;
     }
     virtual void exit_interrupt_mode() override { }
+    virtual int get_id() override { return 6; }
 };
 
 class reactor::syscall_pollfn final : public reactor::pollfn {
@@ -3004,6 +3014,8 @@ public:
     virtual void exit_interrupt_mode() override final {
         _r._thread_pool->exit_interrupt_mode();
     }
+
+    virtual int get_id() override { return 7; }
 };
 
 void
@@ -3411,9 +3423,13 @@ int reactor::do_run() {
 
 void
 reactor::try_sleep() {
+    STAP_PROBE(seastar, reactor_try_sleep_start);
+    auto end = defer([]noexcept{ STAP_PROBE(seastar, reactor_try_sleep_end);});
+
     for (auto i = _pollers.begin(); i != _pollers.end(); ++i) {
         auto ok = (*i)->try_enter_interrupt_mode();
         if (!ok) {
+            STAP_PROBE1(seastar, reactor_try_sleep_early_return, (*i)->get_id());
             while (i != _pollers.begin()) {
                 (*--i)->exit_interrupt_mode();
             }
@@ -3421,7 +3437,9 @@ reactor::try_sleep() {
         }
     }
 
+    STAP_PROBE(seastar, reactor_try_sleep_wait_start);
     _backend->wait_and_process_events(&_active_sigmask);
+    STAP_PROBE(seastar, reactor_try_sleep_wait_end);
 
     for (auto i = _pollers.rbegin(); i != _pollers.rend(); ++i) {
         (*i)->exit_interrupt_mode();
@@ -5299,6 +5317,7 @@ public:
         const_cast<reactor_stall_sampler*>(this)->mark_run_start();
         return r;
     }
+    virtual int get_id() override { return 0; }
 };
 
 future<stall_report>
