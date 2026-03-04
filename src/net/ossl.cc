@@ -2004,10 +2004,11 @@ private:
 
     ssl_ctx_ptr make_ssl_context(session_type type) {
         auto ssl_ctx = ssl_ctx_ptr(SSL_CTX_new(TLS_method()));
-        if (!ssl_ctx || ERR_peek_error() != 0) {
+        if (!ssl_ctx) {
             throw make_ossl_error(
               "Failed to initialize SSL context");
         }
+        log_and_clear_ossl_errors("make_ssl_context: SSL_CTX_new success");
         const auto& ck_pair = _creds->get_certkey_pair();
         if (type == session_type::SERVER) {
             if (!ck_pair) {
