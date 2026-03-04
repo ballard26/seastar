@@ -159,13 +159,13 @@ std::vector<ossl_errc> get_all_ossl_errors() {
 
 void log_and_clear_ossl_errors(std::string_view call_site) {
     if (auto errors = get_all_ossl_errors(); !errors.empty()) {
-        tls_log.debug("{}: unexpected errors in OpenSSL queue: {}", call_site, errors);
+        tls::tls_log.debug("{}: unexpected errors in OpenSSL queue: {}", call_site, errors);
     }
 }
 
 void log_ossl_error_queue(std::string_view call_site) {
     if (auto err = ERR_peek_error(); err != 0) {
-        tls_log.debug("{}: errors present in OpenSSL error queue: {}", call_site,
+        tls::tls_log.debug("{}: errors present in OpenSSL error queue: {}", call_site,
                       static_cast<ossl_errc>(err));
     }
 }
