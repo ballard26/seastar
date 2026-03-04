@@ -1647,10 +1647,11 @@ public:
         tls_log.trace("{} handshake", *this);
         if (_creds->need_load_system_trust()) {
             log_ossl_error_queue("handshake: before SSL_CTX_set_default_verify_paths");
-            if (!SSL_CTX_set_default_verify_paths(_ctx.get()) || ERR_peek_error() != 0) {
+            if (!SSL_CTX_set_default_verify_paths(_ctx.get())) {
                 throw make_ossl_error(
                   "Could not load system trust");
             }
+            log_and_clear_ossl_errors("handshake: SSL_CTX_set_default_verify_paths success");
             _creds->set_load_system_trust(false);
         }
 
